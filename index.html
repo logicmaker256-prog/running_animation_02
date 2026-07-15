@@ -168,7 +168,7 @@ const controls = new THREE.OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 controls.minDistance = 1.2;
-controls.maxDistance = 8;
+controls.maxDistance = 30; // 自動フィット時にキャラ全体が収まる距離まで下がれるよう、上限を大きめに確保
 controls.target.set(0, 1.0, 0);
 controls.update();
 
@@ -330,7 +330,8 @@ function fitCameraToObject(object) {
 
     const distForHeight = (size.y / 2) / Math.tan(availVFovRad / 2);
     const distForWidth  = (size.x / 2) / Math.tan(fullHFovRad / 2);
-    const fitDist = Math.max(distForHeight, distForWidth) * 1.3; // 余白ぶん少し引く
+    const SCREEN_FILL_RATIO = 2 / 3; // キャラの見た目の大きさ（1 = 従来通り画面いっぱい、小さいほど余白が増える）
+    const fitDist = Math.max(distForHeight, distForWidth) * 1.3 / SCREEN_FILL_RATIO; // 余白ぶん少し引く
 
     camera.position.set(center.x + fitDist * 0.15, center.y + size.y * 0.05, center.z + fitDist);
     camera.near = fitDist / 100;
