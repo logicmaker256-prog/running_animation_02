@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>ドラゴンバスター風 ヒーロー・アニメーター</title>
+<style>
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+        margin: 0; padding: 0; width: 100%; height: 100%;
+        overflow: hidden; touch-action: none;
+        background: linear-gradient(#dfe6f0, #f4f1ea);
+        font-family: -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    }
+    #canvas-wrap { position: fixed; inset: 0; }
+    canvas { display: block; width: 100%; height: 100%; }
+
+    /* ── ヘッダー ── */
+    #header {
+        position: fixed; top: 0; left: 0; right: 0; z-index: 20;
+        padding: 10px 14px; padding-top: max(10px, env(safe-area-inset-top));
+        background: rgba(255,255,255,0.85); backdrop-filter: blur(6px);
+        font-size: 14px; font-weight: bold; color: #5a3ea8;
+        display: flex; align-items: center; justify-content: space-between;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    #status-text { font-size: 11px; font-weight: normal; color: #888; }
+
+    /* ── 読み込み中 ── */
+    #loading {
+        position: fixed; inset: 0; z-index: 50;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        background: rgba(255,255,255,0.92); font-size: 15px; color: #7c4dff; font-weight: bold;
+        gap: 10px;
+    }
+    .spinner {
+        width: 34px; height: 34px; border-radius: 50%;
+        border: 4px solid #e0d6ff; border-top-color: #7c4dff;
+        animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── GLBファイル手動選択 ── */
+    #file-picker-wrap {
+        position: fixed; inset: 0; z-index: 51; display: none;
+        flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+        background: rgba(255,255,255,0.96); padding: 24px; text-align: center;
+    }
+    #file-picker-wrap p { color: #555; font-size: 13px; line-height: 1.7; max-width: 320px; margin: 0; }
+    #file-picker-wrap .hint { color: #999; font-size: 11px; }
+    #glbFileInput { display: none; }
+    #glbFileLabel {
+        padding: 12px 26px; border-radius: 24px; background: #7c4dff; color: white;
+        font-weight: bold; font-size: 14px; cursor: pointer; box-shadow: 0 3px 10px rgba(124,77,255,0.35);
+    }
+    #glbFileLabel:active { background: #6a3fe0; transform: scale(0.97); }
+
+    /* ── 下部パネル ── */
+    #ui-panel {
+        position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+        background: rgba(255,255,255,0.92); backdrop-filter: blur(6px);
+        border-radius: 18px 18px 0 0; box-shadow: 0 -2px 14px rgba(0,0,0,0.12);
+        padding-bottom: max(0px, env(safe-area-inset-bottom));
+    }
+    #panel-header {
+        padding: 10px 14px; text-align: center; font-weight: bold; color: #7c4dff;
+        font-size: 13px; cursor: pointer; user-select: none;
+    }
+    #panel-body {
+        padding: 0 12px 10px; max-height: 42vh; overflow-y: auto;
+        transition: max-height 0.22s ease, opacity 0.18s ease;
+    }
+    #panel-body.collapsed { max-height: 0 !important; opacity: 0; overflow: hidden; padding: 0 12px; }
+    .section-label {
+        font-size: 11px; font-weight: bold; color: #999; margin: 6px 2px 6px;
+    }
+    #pose-buttons {
+        display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px;
+    }
+    .pose-btn {
+        padding: 9px 4px; border-radius: 9px; border: 2px solid #7c4dff;
+        background: #f3eeff; color: #7c4dff; font-size: 12px; font-weight: bold;
+        cursor: pointer; transition: all 0.12s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .pose-btn.active { background: #7c4dff; color: white; }
+    .pose-btn:active { transform: scale(0.95); }
+    .pose-btn:disabled { opacity: 0.45; }
+
+    #action-buttons { display: flex; gap: 8px; margin-top: 2px; }
+    .action-btn {
+        flex: 1; padding: 12px 6px; border-radius: 10px; border: none;
+        font-size: 13px; font-weight: bold; color: white; cursor: pointer;
+        transition: all 0.12s;
+    }
+    .action-btn:active { transform: scale(0.96); }
+    .action-btn:disabled { opacity: 0.5; }
+    #comboBtn   { background: linear-gradient(135deg, #ff7043, #ff5252); }
+    #victoryBtn { background: linear-gradient(135deg, #ffb300, #ff8f00); }
+    #guardBtn   { background: linear-gradient(135deg, #29b6f6, #0288d1); }
+    #runBtn     { background: linear-gradient(135deg, #66bb6a, #2e7d32); }
+    #runBtn.active { background: linear-gradient(135deg, #e53935, #b71c1c); }
+    #action-buttons2 { display: flex; margin-top: 6px; }
+</style>
+</head>
+<body>
+
+<div id="canvas-wrap"></div>
+
+<div id="header">
+    <span>🐉 ドラゴンバスター風 ヒーロー・アニメーター</span>
+    <span id="status-text">読み込み中…</span>
+</div>
+
+
+<div id="loading">
+    <div class="spinner"></div>
+    <div>GLBを読み込み中…</div>
+</div>
+
+<div id="file-picker-wrap">
+    <p>
+        同じ場所に置いた <b>my_character.glb</b> が見つかりませんでした。<br>
+        3Dモデリングアプリで書き出したGLBファイルを選んでください。
+    </p>
+    <label id="glbFileLabel" for="glbFileInput">📂 GLBファイルを選ぶ</label>
+    <input type="file" id="glbFileInput" accept=".glb">
+    <p class="hint">※ HTMLと同じフォルダに my_character.glb を置いておくと、次回から自動で読み込まれます。</p>
+</div>
+
+<div id="ui-panel" style="display:none;">
+    <div id="panel-header">▼ ポーズ・アクション（タップで折りたたみ）</div>
+    <div id="panel-body">
+        <div class="section-label">🎭 ポーズ（タップで切替）</div>
+        <div id="pose-buttons"></div>
+
+        <div class="section-label">⚔️ アクション再生</div>
+        <div id="action-buttons">
+            <button id="guardBtn"   class="action-btn">🛡️ 構え〜防御</button>
+            <button id="comboBtn"   class="action-btn">💥 斬撃コンボ</button>
+            <button id="victoryBtn" class="action-btn">🏆 勝利デモ</button>
+        </div>
+        <div id="action-buttons2">
+            <button id="runBtn" class="action-btn" style="width:100%;">🏃 走るループ</button>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script>
+// ============================================================
+// シーン基本セットアップ
+// ============================================================
+const canvasWrap = document.getElementById('canvas-wrap');
+const scene = new THREE.Scene();
+
+const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.05, 100);
+camera.position.set(0, 1.4, 3.6);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.outputEncoding = THREE.sRGBEncoding;
+canvasWrap.appendChild(renderer.domElement);
+
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.minDistance = 1.2;
+controls.maxDistance = 8;
+controls.target.set(0, 1.0, 0);
+controls.update();
+
+// ライト
+scene.add(new THREE.AmbientLight(0xffffff, 0.75));
+const keyLight = new THREE.DirectionalLight(0xffffff, 0.9);
+keyLight.position.set(2, 4, 3);
+scene.add(keyLight);
+const fillLight = new THREE.DirectionalLight(0xffe9d0, 0.35);
+fillLight.position.set(-3, 2, -2);
+scene.add(fillLight);
+
+// 地面（グリッド）
+const grid = new THREE.GridHelper(6, 24, 0xbbaadd, 0xd8d0ee);
+grid.position.y = 0;
+scene.add(grid);
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    if (model) fitCameraToObject(model);
+});
+
+// パネルの開閉（タップで折りたたみ、キャラ全体を見やすくする）
+document.getElementById('panel-header').addEventListener('click', () => {
+    const body = document.getElementById('panel-body');
+    const header = document.getElementById('panel-header');
+    const collapsed = body.classList.toggle('collapsed');
+    header.textContent = (collapsed ? '▲' : '▼') + ' ポーズ・アクション（タップで' + (collapsed ? '展開' : '折りたたみ') + '）';
+    // トランジションが終わってからパネルの実サイズでフィットし直す
+    setTimeout(() => { if (model) fitCameraToObject(model); }, 240);
+});
+
+// ============================================================
+// GLB 読み込み（外部ファイル。HTMLには埋め込まない＝差し替え自由）
+// ============================================================
+const GLB_URL = './my_character.glb'; // 3Dモデリングアプリの書き出しと同じファイル名
+const loader = new THREE.GLTFLoader();
+
+let mixer = null;
+let model = null;
+const actionsByName = {};
+let currentAction = null;
+let sequenceRunning = false;
+let runLoopActive = false;
+
+const ICONS = {
+    '自然な構え': '🧍', '剣を構える': '⚔️', '盾で防御': '🛡️', '振りかぶり': '🗡️',
+    '斬り下ろし': '💥', '疾走': '🏃', '疾走・中間': '🏃', '疾走２（逆足）': '🏃',
+    '勝利ポーズ': '🏆', '決めポーズ': '🤺', '一礼': '🙇',
+};
+function iconFor(name) { return ICONS[name] || '🎬'; }
+
+function showLoading(show) {
+    document.getElementById('loading').style.display = show ? 'flex' : 'none';
+}
+function showFilePicker(show) {
+    document.getElementById('file-picker-wrap').style.display = show ? 'flex' : 'none';
+}
+function setStatus(text) {
+    document.getElementById('status-text').textContent = text;
+}
+
+function tryFetchLoad() {
+    showLoading(true);
+    loader.load(
+        GLB_URL,
+        onGLTFLoaded,
+        undefined,
+        () => {
+            // 相対パスで見つからない場合は手動選択に切り替える
+            showLoading(false);
+            showFilePicker(true);
+            setStatus('GLB未読込');
+        }
+    );
+}
+
+document.getElementById('glbFileInput').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    showFilePicker(false);
+    showLoading(true);
+    const reader = new FileReader();
+    reader.onload = () => {
+        loader.parse(reader.result, '', onGLTFLoaded, (err) => {
+            showLoading(false);
+            alert('GLBの読み込みに失敗しました: ' + err);
+        });
+    };
+    reader.readAsArrayBuffer(file);
+});
+
+function onGLTFLoaded(gltf) {
+    showLoading(false);
+    showFilePicker(false);
+    document.getElementById('ui-panel').style.display = 'block';
+    setupModel(gltf);
+}
+
+// ============================================================
+// モデル & アニメーションのセットアップ
+// ============================================================
+function setupModel(gltf) {
+    model = gltf.scene;
+    scene.add(model);
+    fitCameraToObject(model);
+
+    mixer = new THREE.AnimationMixer(model);
+
+    // GLBに埋め込まれている各ポーズ（静止1フレーム）をアクション化。
+    // 名前を変更・追加していても、読み込んだGLBの内容がそのままボタンになる。
+    gltf.animations.forEach(clip => {
+        const action = mixer.clipAction(clip);
+        action.setLoop(THREE.LoopOnce);
+        action.clampWhenFinished = true;
+        actionsByName[clip.name] = action;
+    });
+
+    buildPoseButtons(gltf.animations.map(c => c.name));
+
+    const firstName = gltf.animations[0] && gltf.animations[0].name;
+    if (firstName) {
+        currentAction = actionsByName[firstName];
+        currentAction.play();
+        setStatus(iconFor(firstName) + ' ' + firstName);
+        highlightPoseButton(firstName);
+    }
+
+    // パネルの実サイズが確定してから、念のためもう一度フィットし直す
+    requestAnimationFrame(() => fitCameraToObject(model));
+}
+
+// 下部パネルに隠れていない、画面のうち見える部分の割合（0〜1）
+function getVisibleFraction() {
+    const panel = document.getElementById('ui-panel');
+    if (!panel || panel.style.display === 'none') return 1;
+    const rect = panel.getBoundingClientRect();
+    const frac = rect.top / window.innerHeight;
+    if (!isFinite(frac) || frac <= 0) return 1;
+    return Math.max(0.35, Math.min(1, frac));
+}
+
+function fitCameraToObject(object) {
+    // 追加直後は行列(matrixWorld)が未更新で境界ボックスがおかしくなることがあるため、強制更新する
+    object.updateMatrixWorld(true);
+
+    const box = new THREE.Box3().setFromObject(object);
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+    if (size.y <= 0 || !isFinite(size.y)) return;
+
+    const visibleFrac = getVisibleFraction(); // パネルに隠れていない画面の縦方向の割合
+
+    const fullVFovRad = THREE.MathUtils.degToRad(camera.fov);
+    const fullHFovRad = 2 * Math.atan(Math.tan(fullVFovRad / 2) * camera.aspect);
+    const availVFovRad = fullVFovRad * visibleFrac; // 縦方向だけパネルの分を差し引く
+
+    const distForHeight = (size.y / 2) / Math.tan(availVFovRad / 2);
+    const distForWidth  = (size.x / 2) / Math.tan(fullHFovRad / 2);
+    const fitDist = Math.max(distForHeight, distForWidth) * 1.3; // 余白ぶん少し引く
+
+    camera.position.set(center.x + fitDist * 0.15, center.y + size.y * 0.05, center.z + fitDist);
+    camera.near = fitDist / 100;
+    camera.far = fitDist * 50;
+    camera.updateProjectionMatrix();
+
+    // 注視点は体の中心よりやや脚寄りにすることで、キャラ全体をパネルに隠れない上側に寄せる
+    const centerFrac = Math.max(0.18, 0.5 * visibleFrac);
+    controls.target.set(center.x, box.min.y + size.y * centerFrac, center.z);
+    controls.update();
+
+    grid.position.y = box.min.y;
+}
+
+// ── ポーズをクロスフェードで切り替える ──────────────────────
+function crossFadeToPose(name, duration = 0.3) {
+    const next = actionsByName[name];
+    if (!next) return;
+
+    next.enabled = true;
+    next.setEffectiveWeight(1);
+    next.reset();
+    next.play();
+
+    if (currentAction && currentAction !== next) {
+        currentAction.crossFadeTo(next, duration, false);
+    }
+    currentAction = next;
+    setStatus(iconFor(name) + ' ' + name);
+    highlightPoseButton(name);
+}
+
+function highlightPoseButton(name) {
+    document.querySelectorAll('.pose-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.pose === name);
+    });
+}
+
+function setControlsDisabled(disabled, exceptId) {
+    document.querySelectorAll('.pose-btn, .action-btn').forEach(b => {
+        if (exceptId && b.id === exceptId) return;
+        b.disabled = disabled;
+    });
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// 複数ポーズを順番にクロスフェードして「アニメーション」として再生する
+async function playSequence(steps) {
+    if (sequenceRunning || runLoopActive) return;
+    sequenceRunning = true;
+    setControlsDisabled(true);
+    for (const step of steps) {
+        if (actionsByName[step.name]) {
+            crossFadeToPose(step.name, step.fade);
+        }
+        await sleep(step.hold);
+    }
+    sequenceRunning = false;
+    setControlsDisabled(false);
+}
+
+// ============================================================
+// UI構築
+// ============================================================
+function buildPoseButtons(names) {
+    const wrap = document.getElementById('pose-buttons');
+    wrap.innerHTML = '';
+    names.forEach(name => {
+        const btn = document.createElement('button');
+        btn.className = 'pose-btn';
+        btn.dataset.pose = name;
+        btn.textContent = iconFor(name) + ' ' + name;
+        btn.addEventListener('click', () => crossFadeToPose(name, 0.3));
+        wrap.appendChild(btn);
+    });
+}
+
+// 🛡️ 構え〜防御：ガードから盾ブロックへ
+document.getElementById('guardBtn').addEventListener('click', () => {
+    playSequence([
+        { name: '自然な構え', fade: 0.2, hold: 300 },
+        { name: '剣を構える', fade: 0.25, hold: 500 },
+        { name: '盾で防御', fade: 0.2, hold: 700 },
+        { name: '自然な構え', fade: 0.35, hold: 10 },
+    ]);
+});
+
+// 💥 斬撃コンボ：構え → 振りかぶり → 素早く斬り下ろし → 自然体に戻る
+document.getElementById('comboBtn').addEventListener('click', () => {
+    playSequence([
+        { name: '自然な構え', fade: 0.2, hold: 250 },
+        { name: '剣を構える', fade: 0.22, hold: 400 },
+        { name: '振りかぶり', fade: 0.16, hold: 260 },
+        { name: '斬り下ろし', fade: 0.06, hold: 550 }, // 一気に振り切るので短いフェード
+        { name: '自然な構え', fade: 0.4, hold: 10 },
+    ]);
+});
+
+// 🏆 勝利デモ：斬った後に勝ちどき
+document.getElementById('victoryBtn').addEventListener('click', () => {
+    playSequence([
+        { name: '斬り下ろし', fade: 0.15, hold: 200 },
+        { name: '勝利ポーズ', fade: 0.3, hold: 900 },
+        { name: '自然な構え', fade: 0.4, hold: 10 },
+    ]);
+});
+
+// 🏃 走るループ：「疾走」⇔「疾走２（逆足）」の間に「疾走・中間」を挟んで
+// 交互にクロスフェードし続けることで、静止ポーズだけで走行感を出す。
+// ※この3ポーズが読み込んだGLBに含まれていない場合は再エクスポートが必要。
+const RUN_CYCLE = [
+    { name: '疾走',           fade: 0.12, hold: 220 },
+    { name: '疾走・中間',      fade: 0.10, hold: 150 },
+    { name: '疾走２（逆足）',   fade: 0.12, hold: 220 },
+    { name: '疾走・中間',      fade: 0.10, hold: 150 },
+];
+
+async function runLoopSequence() {
+    while (runLoopActive) {
+        for (const step of RUN_CYCLE) {
+            if (!runLoopActive) break;
+            if (actionsByName[step.name]) crossFadeToPose(step.name, step.fade);
+            await sleep(step.hold);
+        }
+    }
+}
+
+document.getElementById('runBtn').addEventListener('click', () => {
+    const btn = document.getElementById('runBtn');
+
+    if (runLoopActive) {
+        // 停止
+        runLoopActive = false;
+        btn.classList.remove('active');
+        btn.textContent = '🏃 走るループ';
+        setControlsDisabled(false);
+        return;
+    }
+
+    if (sequenceRunning) return; // 他のアクション再生中は開始しない
+
+    const required = RUN_CYCLE.map(s => s.name).filter((v, i, a) => a.indexOf(v) === i);
+    const missing = required.filter(n => !actionsByName[n]);
+    if (missing.length) {
+        alert(
+            'この走行ループには次のポーズが必要です:\n・' + missing.join('\n・') +
+            '\n\nキャラメイクアプリでポーズを追加してから、GLBを再エクスポートしてください。'
+        );
+        return;
+    }
+
+    runLoopActive = true;
+    btn.classList.add('active');
+    btn.textContent = '⏹ 停止';
+    setControlsDisabled(true, 'runBtn');
+    runLoopSequence();
+});
+
+// ============================================================
+// レンダーループ
+// ============================================================
+const clock = new THREE.Clock();
+function animate() {
+    requestAnimationFrame(animate);
+    const dt = clock.getDelta();
+    if (mixer) mixer.update(dt);
+    controls.update();
+    renderer.render(scene, camera);
+}
+animate();
+
+tryFetchLoad();
+</script>
+</body>
+</html>
